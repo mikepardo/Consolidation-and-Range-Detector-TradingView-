@@ -18,6 +18,7 @@ showRangeBoxes = input.bool(true, "Show Range Boxes", group="Visual Settings")
 showRangeLines = input.bool(true, "Show Range Lines", group="Visual Settings")
 showMidLine = input.bool(true, "Show Mid Line", group="Visual Settings")
 showLabels = input.bool(true, "Show Labels", group="Visual Settings")
+persistBoxes = input.bool(false, "Persist Historical Boxes", group="Visual Settings", tooltip="Keep consolidation boxes visible after they end")
 boxTransparency = input.int(90, "Box Transparency", minval=0, maxval=100, group="Visual Settings")
 
 // Color Settings
@@ -34,7 +35,8 @@ highestHigh = ta.highest(high, lookbackPeriod)
 lowestLow = ta.lowest(low, lookbackPeriod)
 
 // Calculate range as percentage of price
-rangeSize = ((highestHigh - lowestLow) / lowestLow) * 100
+// Prevent division by zero by ensuring lowestLow is not zero
+rangeSize = lowestLow != 0 ? ((highestHigh - lowestLow) / lowestLow) * 100 : 0
 
 // Determine if we're in a consolidation range
 isConsolidating = rangeSize <= rangeThreshold
@@ -81,8 +83,8 @@ bearishBreakout = wasInConsolidation[1] and not confirmedConsolidation and close
 var box consolidationBox = na
 if showRangeBoxes and confirmedConsolidation
     if na(consolidationBox) or not confirmedConsolidation[1]
-        // Delete old box if it exists
-        if not na(consolidationBox)
+        // Delete old box if it exists (only when persistence is off)
+        if not na(consolidationBox) and not persistBoxes
             box.delete(consolidationBox)
         // Create new box
         consolidationBox := box.new(
@@ -100,9 +102,13 @@ if showRangeBoxes and confirmedConsolidation
         box.set_top(consolidationBox, rangeHigh)
         box.set_bottom(consolidationBox, rangeLow)
 else if not confirmedConsolidation and not na(consolidationBox)
-    // Delete box when consolidation ends
-    box.delete(consolidationBox)
-    consolidationBox := na
+    if persistBoxes
+        // Keep the box but reset the reference for the next consolidation
+        consolidationBox := na
+    else
+        // Delete box when consolidation ends (default behavior)
+        box.delete(consolidationBox)
+        consolidationBox := na
 
 // Plot range lines
 plot(showRangeLines and confirmedConsolidation ? rangeHigh : na, "Range High", color=consolidationColor, linewidth=2, style=plot.style_line)
