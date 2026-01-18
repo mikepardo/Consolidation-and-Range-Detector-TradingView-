@@ -25,9 +25,6 @@ bullishRangeColor = input.color(color.new(color.green, 0), "Bullish Breakout Col
 bearishRangeColor = input.color(color.new(color.red, 0), "Bearish Breakout Color", group="Colors")
 consolidationColor = input.color(color.new(color.blue, 0), "Consolidation Color", group="Colors")
 
-// Alert Settings
-enableBreakoutAlerts = input.bool(true, "Enable Breakout Alerts", group="Alerts")
-
 // ============================================================================
 // CALCULATIONS
 // ============================================================================
@@ -184,10 +181,11 @@ bgcolor(confirmedConsolidation ? color.new(consolidationColor, 95) : na, title="
 // ALERTS
 // ============================================================================
 
-if enableBreakoutAlerts
-    alertcondition(bullishBreakout, title="Bullish Breakout Alert", message="Price has broken above the consolidation range!")
-    alertcondition(bearishBreakout, title="Bearish Breakout Alert", message="Price has broken below the consolidation range!")
-    alertcondition(confirmedConsolidation and not confirmedConsolidation[1], title="New Consolidation Detected", message="New consolidation range detected!")
+// Note: alertcondition must be at global scope and cannot be inside if statements
+// Users can choose which alerts to enable when creating alerts in TradingView
+alertcondition(bullishBreakout, title="Bullish Breakout Alert", message="Price has broken above the consolidation range!")
+alertcondition(bearishBreakout, title="Bearish Breakout Alert", message="Price has broken below the consolidation range!")
+alertcondition(confirmedConsolidation and not confirmedConsolidation[1], title="New Consolidation Detected", message="New consolidation range detected!")
 
 // ============================================================================
 // TABLE - Range Information
