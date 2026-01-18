@@ -1,0 +1,196 @@
+// This Pine Script™ code is subject to the terms of the Mozilla Public License 2.0 at https://mozilla.org/MPL/2.0/
+// © Consolidation and Range Detector
+
+//@version=6
+indicator("Consolidation and Range Detector", overlay=true, max_boxes_count=500, max_lines_count=500)
+
+// ============================================================================
+// INPUT PARAMETERS
+// ============================================================================
+
+// Range Detection Settings
+lookbackPeriod = input.int(20, "Lookback Period", minval=5, maxval=200, tooltip="Number of bars to analyze for range detection")
+rangeThreshold = input.float(2.0, "Range Threshold %", minval=0.1, maxval=10.0, step=0.1, tooltip="Percentage threshold for identifying a consolidation range")
+minBarsInRange = input.int(10, "Minimum Bars in Range", minval=3, maxval=100, tooltip="Minimum number of consecutive bars required to confirm a consolidation")
+
+// Visual Settings
+showRangeBoxes = input.bool(true, "Show Range Boxes", group="Visual Settings")
+showRangeLines = input.bool(true, "Show Range Lines", group="Visual Settings")
+showMidLine = input.bool(true, "Show Mid Line", group="Visual Settings")
+showLabels = input.bool(true, "Show Labels", group="Visual Settings")
+boxTransparency = input.int(90, "Box Transparency", minval=0, maxval=100, group="Visual Settings")
+
+// Color Settings
+bullishRangeColor = input.color(color.new(color.green, 0), "Bullish Breakout Color", group="Colors")
+bearishRangeColor = input.color(color.new(color.red, 0), "Bearish Breakout Color", group="Colors")
+consolidationColor = input.color(color.new(color.blue, 0), "Consolidation Color", group="Colors")
+
+// ============================================================================
+// CALCULATIONS
+// ============================================================================
+
+// Calculate highest high and lowest low over lookback period
+highestHigh = ta.highest(high, lookbackPeriod)
+lowestLow = ta.lowest(low, lookbackPeriod)
+
+// Calculate range as percentage of price
+rangeSize = ((highestHigh - lowestLow) / lowestLow) * 100
+
+// Determine if we're in a consolidation range
+isConsolidating = rangeSize <= rangeThreshold
+
+// Track consecutive bars in consolidation
+var int barsInConsolidation = 0
+if isConsolidating
+    barsInConsolidation += 1
+else
+    barsInConsolidation := 0
+
+// Confirm consolidation only if minimum bars requirement is met
+confirmedConsolidation = barsInConsolidation >= minBarsInRange
+
+// Calculate range levels
+rangeHigh = highestHigh
+rangeLow = lowestLow
+rangeMid = (rangeHigh + rangeLow) / 2
+rangeWidth = rangeHigh - rangeLow
+
+// Detect breakouts
+var bool wasInConsolidation = false
+var float savedRangeHigh = na
+var float savedRangeLow = na
+
+// Track when we enter/exit consolidation
+if confirmedConsolidation
+    wasInConsolidation := true
+    savedRangeHigh := rangeHigh
+    savedRangeLow := rangeLow
+else if wasInConsolidation
+    // We just exited consolidation - check for breakout
+    wasInConsolidation := false
+
+// Detect breakouts on the bar that exits consolidation
+bullishBreakout = wasInConsolidation[1] and not confirmedConsolidation and close > savedRangeHigh[1]
+bearishBreakout = wasInConsolidation[1] and not confirmedConsolidation and close < savedRangeLow[1]
+
+// ============================================================================
+// VISUAL REPRESENTATION
+// ============================================================================
+
+// Draw range boxes
+var box consolidationBox = na
+if showRangeBoxes and confirmedConsolidation
+    if na(consolidationBox) or not confirmedConsolidation[1]
+        // Delete old box if it exists
+        if not na(consolidationBox)
+            box.delete(consolidationBox)
+        // Create new box
+        consolidationBox := box.new(
+             left=bar_index - lookbackPeriod,
+             top=rangeHigh,
+             right=bar_index,
+             bottom=rangeLow,
+             border_color=consolidationColor,
+             bgcolor=color.new(consolidationColor, boxTransparency),
+             border_width=2
+         )
+    else
+        // Update existing box
+        box.set_right(consolidationBox, bar_index)
+        box.set_top(consolidationBox, rangeHigh)
+        box.set_bottom(consolidationBox, rangeLow)
+else if not confirmedConsolidation and not na(consolidationBox)
+    // Delete box when consolidation ends
+    box.delete(consolidationBox)
+    consolidationBox := na
+
+// Plot range lines
+plot(showRangeLines and confirmedConsolidation ? rangeHigh : na, "Range High", color=consolidationColor, linewidth=2, style=plot.style_line)
+plot(showRangeLines and confirmedConsolidation ? rangeLow : na, "Range Low", color=consolidationColor, linewidth=2, style=plot.style_line)
+plot(showMidLine and confirmedConsolidation ? rangeMid : na, "Range Mid", color=color.new(consolidationColor, 50), linewidth=1, style=plot.style_circles)
+
+// Plot breakout signals
+plotshape(bullishBreakout, "Bullish Breakout", shape.triangleup, location.belowbar, bullishRangeColor, size=size.normal)
+plotshape(bearishBreakout, "Bearish Breakout", shape.triangledown, location.abovebar, bearishRangeColor, size=size.normal)
+
+// ============================================================================
+// LABELS
+// ============================================================================
+
+if showLabels and confirmedConsolidation and not confirmedConsolidation[1]
+    label.new(
+         bar_index,
+         rangeHigh,
+         text="Consolidation\n" + str.tostring(rangeSize, "#.##") + "%",
+         color=consolidationColor,
+         textcolor=color.white,
+         style=label.style_label_down,
+         size=size.small
+     )
+
+if showLabels and bullishBreakout
+    label.new(
+         bar_index,
+         low,
+         text="Bullish Breakout",
+         color=bullishRangeColor,
+         textcolor=color.white,
+         style=label.style_label_up,
+         size=size.small
+     )
+
+if showLabels and bearishBreakout
+    label.new(
+         bar_index,
+         high,
+         text="Bearish Breakout",
+         color=bearishRangeColor,
+         textcolor=color.white,
+         style=label.style_label_down,
+         size=size.small
+     )
+
+// ============================================================================
+// BACKGROUND COLORING
+// ============================================================================
+
+bgcolor(confirmedConsolidation ? color.new(consolidationColor, 95) : na, title="Consolidation Background")
+
+// ============================================================================
+// ALERTS
+// ============================================================================
+
+// Note: alertcondition must be at global scope and cannot be inside if statements
+// Users can choose which alerts to enable when creating alerts in TradingView
+alertcondition(bullishBreakout, title="Bullish Breakout Alert", message="Price has broken above the consolidation range!")
+alertcondition(bearishBreakout, title="Bearish Breakout Alert", message="Price has broken below the consolidation range!")
+alertcondition(confirmedConsolidation and not confirmedConsolidation[1], title="New Consolidation Detected", message="New consolidation range detected!")
+
+// ============================================================================
+// TABLE - Range Information
+// ============================================================================
+
+var table infoTable = table.new(position.top_right, 2, 5, border_width=1)
+
+if barstate.islast
+    // Header
+    table.cell(infoTable, 0, 0, "Metric", bgcolor=color.new(color.gray, 80), text_color=color.white, text_size=size.small)
+    table.cell(infoTable, 1, 0, "Value", bgcolor=color.new(color.gray, 80), text_color=color.white, text_size=size.small)
+
+    // Status
+    statusText = confirmedConsolidation ? "YES ✓" : "NO ✗"
+    statusColor = confirmedConsolidation ? color.new(color.green, 80) : color.new(color.red, 80)
+    table.cell(infoTable, 0, 1, "In Consolidation", text_size=size.small)
+    table.cell(infoTable, 1, 1, statusText, bgcolor=statusColor, text_size=size.small)
+
+    // Range Size
+    table.cell(infoTable, 0, 2, "Range Size", text_size=size.small)
+    table.cell(infoTable, 1, 2, str.tostring(rangeSize, "#.##") + "%", text_size=size.small)
+
+    // Bars in Range
+    table.cell(infoTable, 0, 3, "Bars in Range", text_size=size.small)
+    table.cell(infoTable, 1, 3, str.tostring(barsInConsolidation), text_size=size.small)
+
+    // Range Width
+    table.cell(infoTable, 0, 4, "Range Width", text_size=size.small)
+    table.cell(infoTable, 1, 4, str.tostring(rangeWidth, "#.####"), text_size=size.small)
