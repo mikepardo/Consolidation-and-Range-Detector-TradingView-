@@ -56,59 +56,35 @@ rangeMid = (rangeHigh + rangeLow) / 2
 rangeWidth = rangeHigh - rangeLow
 
 // Detect breakouts
-var bool inRange = false
-var float breakoutLevel = na
-var bool bullishBreakout = false
-var bool bearishBreakout = false
+var bool wasInConsolidation = false
+var float savedRangeHigh = na
+var float savedRangeLow = na
 
-if confirmedConsolidation and not inRange
-    inRange := true
-    breakoutLevel := na
-    bullishBreakout := false
-    bearishBreakout := false
+// Track when we enter/exit consolidation
+if confirmedConsolidation
+    wasInConsolidation := true
+    savedRangeHigh := rangeHigh
+    savedRangeLow := rangeLow
+else if wasInConsolidation
+    // We just exited consolidation - check for breakout
+    wasInConsolidation := false
 
-if inRange
-    // Check for bullish breakout
-    if close > rangeHigh
-        bullishBreakout := true
-        bearishBreakout := false
-        breakoutLevel := rangeHigh
-        inRange := false
-
-    // Check for bearish breakout
-    else if close < rangeLow
-        bearishBreakout := true
-        bullishBreakout := false
-        breakoutLevel := rangeLow
-        inRange := false
+// Detect breakouts on the bar that exits consolidation
+bullishBreakout = wasInConsolidation[1] and not confirmedConsolidation and close > savedRangeHigh[1]
+bearishBreakout = wasInConsolidation[1] and not confirmedConsolidation and close < savedRangeLow[1]
 
 // ============================================================================
 // VISUAL REPRESENTATION
 // ============================================================================
 
-// Store range values when consolidation is confirmed
-var float savedRangeHigh = na
-var float savedRangeLow = na
-var float savedRangeMid = na
-var int rangeStartBar = na
-
-if confirmedConsolidation and na(savedRangeHigh)
-    savedRangeHigh := rangeHigh
-    savedRangeLow := rangeLow
-    savedRangeMid := rangeMid
-    rangeStartBar := bar_index
-
-// Reset saved values when not in range
-if not confirmedConsolidation and not inRange
-    savedRangeHigh := na
-    savedRangeLow := na
-    savedRangeMid := na
-    rangeStartBar := na
-
 // Draw range boxes
 var box consolidationBox = na
 if showRangeBoxes and confirmedConsolidation
     if na(consolidationBox) or not confirmedConsolidation[1]
+        // Delete old box if it exists
+        if not na(consolidationBox)
+            box.delete(consolidationBox)
+        // Create new box
         consolidationBox := box.new(
              left=bar_index - lookbackPeriod,
              top=rangeHigh,
@@ -119,10 +95,13 @@ if showRangeBoxes and confirmedConsolidation
              border_width=2
          )
     else
+        // Update existing box
         box.set_right(consolidationBox, bar_index)
         box.set_top(consolidationBox, rangeHigh)
         box.set_bottom(consolidationBox, rangeLow)
-else if not confirmedConsolidation
+else if not confirmedConsolidation and not na(consolidationBox)
+    // Delete box when consolidation ends
+    box.delete(consolidationBox)
     consolidationBox := na
 
 // Plot range lines
